@@ -1,0 +1,17 @@
+{
+    "name": "paulo/task-php-refactoring",
+    "authors": [
+        {
+            "name": "Paulo Basilio",
+            "email": "paulolorenzobasilio@yahoo.com"
+        }
+    ],
+    "require": {
+        "monolog/monolog": "^2.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "app/"
+        }
+    }
+}
