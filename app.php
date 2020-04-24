@@ -1,67 +1,69 @@
 <?php
+
+require __DIR__ . '/vendor/autoload.php';
+
+use Monolog\Handler\StreamHandler;
+use Monolog\Logger;
+
+$log = new Logger('debug');
+$log->pushHandler(new StreamHandler('dev.log', Logger::INFO));
+
 foreach (explode("\n", file_get_contents($argv[1])) as $row) {
+    if($row === ""){
+        return;
+    }    
 
-    if (empty($row)) break;
-    $p = explode(",",$row);
-    $p2 = explode(':', $p[0]);
-    $value[0] = trim($p2[1], '"');
-    $p2 = explode(':', $p[1]);
-    $value[1] = trim($p2[1], '"');
-    $p2 = explode(':', $p[2]);
-    $value[2] = trim($p2[1], '"}');
+    $transaction = json_decode($row);
+    list('bin' => $bin, 'amount' => $amount, 'currency' => $currency) = get_object_vars($transaction);
+    
+    $amountRate = isEuCurrency($currency) 
+        ? $amount 
+        : computeExchangeRate($amount, $currency);
 
-    $binResults = file_get_contents('https://lookup.binlist.net/' .$value[0]);
-    if (!$binResults)
-        die('error!');
-    $r = json_decode($binResults);
-    $isEu = isEu($r->country->alpha2);
+    $bankId = getBankIdentification($bin);
+    $countryCode = $bankId->country->alpha2;
 
-    $rate = @json_decode(file_get_contents('https://api.exchangeratesapi.io/latest'), true)['rates'][$value[2]];
-    if ($value[2] == 'EUR' or $rate == 0) {
-        $amntFixed = $value[1];
-    }
-    if ($value[2] != 'EUR' or $rate > 0) {
-        $amntFixed = @($value[1] / $rate);
-    }
+    $comission = $amountRate * commissionRate($countryCode);
 
-    echo $amntFixed * ($isEu == 'yes' ? 0.01 : 0.02);
+    echo ceiling($comission, 2);
     print "\n";
 }
 
-function isEu($c) {
-    $result = false;
-    switch($c) {
-        case 'AT':
-        case 'BE':
-        case 'BG':
-        case 'CY':
-        case 'CZ':
-        case 'DE':
-        case 'DK':
-        case 'EE':
-        case 'ES':
-        case 'FI':
-        case 'FR':
-        case 'GR':
-        case 'HR':
-        case 'HU':
-        case 'IE':
-        case 'IT':
-        case 'LT':
-        case 'LU':
-        case 'LV':
-        case 'MT':
-        case 'NL':
-        case 'PO':
-        case 'PT':
-        case 'RO':
-        case 'SE':
-        case 'SI':
-        case 'SK':
-            $result = 'yes';
-            return $result;
-        default:
-            $result = 'no';
-    }
-    return $result;
+function isEuCurrency($currency){
+    return $currency === 'EUR';
 }
+
+function commissionRate($countryCode){
+    $isEuCountry = isEuCountry($countryCode);
+
+    return $isEuCountry ? 0.01 : 0.02;
+}
+
+function isEuCountry($code) {
+    $euCountries = ['AT', 'BE', 'BG', 'CY', 'CZ', 'DE', 'DK', 'EE', 'ES', 'FI', 'FR', 'GR', 'HR', 'HU', 
+    'IE', 'IT', 'LT', 'LU', 'LV', 'MT', 'NL', 'PO', 'PT', 'RO', 'SE', 'SI', 'SK'];
+
+    return in_array($code, $euCountries);
+}
+
+function computeExchangeRate($amount, $currency){
+    $rate = json_decode(file_get_contents('https://api.exchangeratesapi.io/latest'))->rates->$currency;
+    if ($rate === 0) {
+        return $amount;
+    }
+
+    return $amount/$rate;
+}
+
+function getBankIdentification($bin){
+    $bankId = file_get_contents('https://lookup.binlist.net/' . $bin);
+    if (!$bankId)
+        die('error!');
+    return json_decode($bankId);
+}
+
+function ceiling($value, $precision = 0) {
+    return ceil($value * pow(10, $precision)) / pow(10, $precision);
+}
+
+
